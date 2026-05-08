@@ -1,0 +1,24 @@
+# anime-franchise-collections — optional override config.
+#
+# Save this as config.yaml inside the volume mounted to /config.
+# All entries here are optional — if you don't need to override anything,
+# you don't need a config file at all.
+
+# Override the auto-generated collection name for specific franchises.
+# Match either by parent AniList ID (the lowest AniList ID in the cluster,
+# usually Season 1's ID) or by the auto-generated title text.
+overrides:
+  # Group all of A Certain Magical Index / Railgun / Accelerator together
+  # under "Academy City Collection" instead of "A Certain Magical Index".
+  - parent_anilist_id: 4654
+    name: "Academy City Collection"
+
+  # Use a synonym/short name. match_title is matched case-insensitively
+  # against the auto-detected English title.
+  - match_title: "Is It Wrong to Try to Pick Up Girls in a Dungeon?"
+    name: "Danmachi"
+
+# Tip: you can also rename the collection directly in Plex. The script
+# will detect the rename on its next run (state file in /config/cache
+# tracks what was last applied) and adopt the new name automatically —
+# no config entry needed.
