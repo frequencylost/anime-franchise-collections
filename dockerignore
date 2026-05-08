@@ -1,0 +1,11 @@
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+.env
+*.md
+config.yaml
+config.example.yaml
