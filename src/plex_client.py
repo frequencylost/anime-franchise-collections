@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Iterable, Pattern
 
 from plexapi.server import PlexServer
 
@@ -123,6 +123,54 @@ class PlexClient:
                     )
                 )
         return items
+
+    def list_managed_collection_names(
+        self,
+        library_names: Iterable[str],
+        label_pattern: Pattern[str],
+    ) -> set[str]:
+        """Return the set of collection titles in the given libraries that
+        carry a label matching `label_pattern`.
+
+        agregarr stamps every collection it manages with a label like
+        ``Agregarranilist18351`` / ``Agregarrtmdb12345``. Detecting those
+        collections lets us avoid mistaking them for a user-applied
+        franchise rename — they are genre/theme dumps, not franchise
+        titles.
+        """
+        managed: set[str] = set()
+        for lib_name in library_names:
+            try:
+                section = self._server.library.section(lib_name)
+            except Exception:
+                continue
+            try:
+                collections = section.collections()
+            except Exception:
+                log.debug(
+                    "Could not list collections in %r — skipping label scan",
+                    lib_name,
+                    exc_info=True,
+                )
+                continue
+            for col in collections:
+                try:
+                    labels = [
+                        getattr(lbl, "tag", "") or ""
+                        for lbl in (getattr(col, "labels", None) or [])
+                    ]
+                except Exception:
+                    labels = []
+                if any(label_pattern.search(lbl) for lbl in labels):
+                    managed.add(col.title)
+        log.info(
+            "Identified %d collection(s) managed by an external tool "
+            "(matched by label pattern)",
+            len(managed),
+        )
+        if managed:
+            log.debug("Managed collections: %s", sorted(managed))
+        return managed
 
     def ensure_collection(self, item: PlexAnimeItem, name: str) -> None:
         """Add `name` to the item's collection tags if not already present."""
