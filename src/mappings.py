@@ -22,7 +22,26 @@ MAPPING_URL = (
     "https://raw.githubusercontent.com/eliasbenb/PlexAniBridge-Mappings/"
     "refs/heads/v2/mappings.json"
 )
-MAX_AGE_SECONDS = 12 * 60 * 60  # refetch at most every 12h
+DEFAULT_MAPPING_CACHE_HOURS = 12  # refetch at most every 12h
+
+
+def _resolve_mapping_ttl_seconds() -> int:
+    """Read MAPPING_CACHE_HOURS env var, fall back to default."""
+    raw = os.environ.get("MAPPING_CACHE_HOURS")
+    if raw is None or raw.strip() == "":
+        return DEFAULT_MAPPING_CACHE_HOURS * 60 * 60
+    try:
+        hours = float(raw)
+        if hours <= 0:
+            raise ValueError("must be > 0")
+        return int(hours * 60 * 60)
+    except ValueError:
+        log.warning(
+            "Invalid MAPPING_CACHE_HOURS=%r — using default %d hour(s)",
+            raw,
+            DEFAULT_MAPPING_CACHE_HOURS,
+        )
+        return DEFAULT_MAPPING_CACHE_HOURS * 60 * 60
 
 
 def _normalize_array(v):
@@ -36,6 +55,7 @@ class MappingIndex:
 
     def __init__(self, cache_dir: str):
         self._cache_path = os.path.join(cache_dir, "plexanibridge.json")
+        self._mapping_ttl_seconds = _resolve_mapping_ttl_seconds()
         # Forward
         self._by_anilist: dict[int, dict] = {}
         # Reverse — multiple AniList rows may map to the same TVDB/TMDB ID
@@ -91,7 +111,7 @@ class MappingIndex:
         try:
             stat = os.stat(self._cache_path)
             age = time.time() - stat.st_mtime
-            if age < MAX_AGE_SECONDS:
+            if age < self._mapping_ttl_seconds:
                 with open(self._cache_path, "r", encoding="utf-8") as f:
                     log.info(
                         "Using cached PlexAniBridge mappings (age=%ds)", int(age)
