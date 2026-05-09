@@ -73,6 +73,7 @@ appdata folder before the first run if you want overrides.
 | `LOG_KEEP` | `10` | Number of past per-run log files to retain |
 | `ANILIST_CACHE_DAYS` | `1` | TTL for AniList relations + titles cache. Bump to e.g. `30` for personal use to avoid re-hitting AniList each run |
 | `MAPPING_CACHE_HOURS` | `12` | TTL for the PlexAniBridge mapping fetch |
+| `MANAGED_LABEL_PATTERN` | `^Agregarr` | Regex; any Plex collection whose label matches is treated as managed by another tool and ignored by rename detection |
 
 ## Manual renames in Plex
 
@@ -184,6 +185,34 @@ limits at ~90 requests/min, so a library with 200 franchises with deep
 relation graphs can easily take 30–60 minutes the first time. Subsequent
 runs are fast — the AniList cache (`/config/cache/anilist_cache.json`)
 holds responses for 24h, and the PlexAniBridge mapping is cached for 12h.
+
+### Genre collections from another tool got picked up as renames
+
+If you also run agregarr (or another tool) that creates genre or theme
+collections, the script identifies them via their Plex **labels** and
+excludes them from rename detection.
+
+Every collection agregarr creates carries a label like `Agregarranilist18351`
+/ `Agregarrtmdb12345`. The script reads each collection's labels via the
+Plex API and excludes any whose label matches `MANAGED_LABEL_PATTERN`
+(default `^Agregarr`). If you use a different tool that stamps its own
+labels, set the env var to a regex that matches them, e.g.
+`^(Agregarr|MyOtherTool)`.
+
+Collection size is **not** used as a heuristic — small genre collections
+(e.g. "Death Game", 12 entries) and large ones ("Action", 80 entries)
+are treated identically. The only signal is the label.
+
+If you ran an older version of this script and ended up with corrupted
+state entries (e.g. state.json shows a cluster's name as "Action"), the
+recovery is automatic: on the next run, that wrong name is the new
+"state" name, the rename detector excludes it, and the franchise's real
+collection tag (still on the Plex items from a prior run) becomes the
+detected rename — restoring the correct name. No manual intervention
+needed.
+
+If you want to be sure, you can also delete `state.json` and let the
+script rebuild names from scratch on the next run.
 
 ### I want to see what happened during a long run
 
