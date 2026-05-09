@@ -161,10 +161,18 @@ def _override_for(cluster: Cluster, auto_name: str, config: dict) -> str | None:
 
 
 def _detect_plex_rename(
-    cluster_items, current_state_name: str | None
+    cluster_items,
+    current_state_name: str | None,
+    excluded_names: set[str] | None = None,
 ) -> str | None:
     """Pick a collection name that the user has applied in Plex to a
-    majority of this cluster's items, ignoring the name we previously set.
+    majority of this cluster's items, ignoring:
+
+      - the name we previously applied (no rename happened);
+      - any name in `excluded_names` (collections managed by another
+        tool — agregarr, etc. — identified via their label, not their
+        size). Genre/list collections must not be misread as franchise
+        renames regardless of how many items they contain.
 
     Returns the user-applied name if one dominates the cluster, else None.
     """
@@ -175,16 +183,22 @@ def _detect_plex_rename(
         for name in item.collections:
             counter[name] += 1
 
-    # Need a majority (>= ceil(N/2)) and the candidate must NOT be the
-    # state name (which is unchanged) and must NOT be globally common
-    # (we don't have that signal here, but the majority bar handles it).
     threshold = (len(cluster_items) + 1) // 2
-    candidates = [
-        (name, count)
-        for name, count in counter.items()
-        if count >= threshold
-        and (current_state_name is None or name != current_state_name)
-    ]
+
+    candidates: list[tuple[str, int]] = []
+    for name, count in counter.items():
+        if count < threshold:
+            continue
+        if current_state_name is not None and name == current_state_name:
+            continue
+        if excluded_names is not None and name in excluded_names:
+            log.debug(
+                "Rejecting rename candidate %r: managed by external tool",
+                name,
+            )
+            continue
+        candidates.append((name, count))
+
     if not candidates:
         return None
     # If multiple, pick highest count, tie-break alphabetically.
@@ -198,6 +212,7 @@ def resolve_collection_name(
     anilist: AniListClient,
     state: State,
     config: dict,
+    excluded_collection_names: set[str] | None = None,
 ) -> str:
     # Auto-name: English title of the parent (lowest-AniList-ID) entry.
     parent_entry = anilist.get_entry(cluster.parent_id)
@@ -217,7 +232,11 @@ def resolve_collection_name(
     if last_applied:
         # Did the user remove the last_applied tag from most items? If so,
         # adopt whatever they put in its place.
-        renamed = _detect_plex_rename(cluster_items, last_applied)
+        renamed = _detect_plex_rename(
+            cluster_items,
+            last_applied,
+            excluded_names=excluded_collection_names,
+        )
         if renamed:
             log.info(
                 "Detected rename for cluster %d: %r -> %r",
