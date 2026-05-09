@@ -70,6 +70,9 @@ appdata folder before the first run if you want overrides.
 | `DRY_RUN` | `false` | If true, log changes without writing to Plex |
 | `MIN_CLUSTER_SIZE` | `2` | Skip franchises with fewer items in your library |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `LOG_KEEP` | `10` | Number of past per-run log files to retain |
+| `ANILIST_CACHE_DAYS` | `1` | TTL for AniList relations + titles cache. Bump to e.g. `30` for personal use to avoid re-hitting AniList each run |
+| `MAPPING_CACHE_HOURS` | `12` | TTL for the PlexAniBridge mapping fetch |
 
 ## Manual renames in Plex
 
