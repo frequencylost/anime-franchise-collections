@@ -66,24 +66,40 @@ class _UnionFind:
 
 
 def build_clusters(
-    seed_anilist_ids: Iterable[int], anilist: AniListClient
+    seed_anilist_ids: Iterable[int],
+    anilist: AniListClient,
+    blocklist: set[int] | None = None,
+    extra_dropped_relation_types: set[str] | None = None,
 ) -> list[Cluster]:
     """BFS through AniList relations starting from each seed, then union-find.
 
     The cluster set may include AniList IDs the user does not own in Plex
     (intermediate relations). That's fine — they get filtered out at apply
     time when we look up Plex items by AniList ID.
+
+    Args:
+      blocklist: AniList IDs to exclude entirely. They won't be added to
+        any cluster, AND their relations won't be traversed — so they
+        can't bridge two unrelated franchises together. Use this for
+        compilation/anthology/crossover entries that wrongly link
+        otherwise-separate clusters.
+      extra_dropped_relation_types: relation types to drop in addition to
+        the always-dropped set (ADAPTATION/SOURCE/CHARACTER). The most
+        common useful additions are COMPILATION, CONTAINS, and OTHER.
     """
+    blocklist = blocklist or set()
+    dropped_types = DROP_RELATION_TYPES | (extra_dropped_relation_types or set())
+
     uf = _UnionFind()
     visited: set[int] = set()
-    queue: list[int] = list(set(seed_anilist_ids))
+    queue: list[int] = [s for s in set(seed_anilist_ids) if s not in blocklist]
 
     for sid in queue:
         uf.add(sid)
 
     while queue:
         anilist_id = queue.pop()
-        if anilist_id in visited:
+        if anilist_id in visited or anilist_id in blocklist:
             continue
         visited.add(anilist_id)
 
@@ -94,11 +110,23 @@ def build_clusters(
             continue
 
         for rel in entry.relations:
-            if rel.relation_type in DROP_RELATION_TYPES:
+            if rel.relation_type in dropped_types:
                 continue
             if (rel.node.media_type or "ANIME") != "ANIME":
                 continue
             other = rel.node.id
+            if other in blocklist:
+                continue
+            # Log every union at DEBUG so you can grep the log to find
+            # what bridged two franchises together.
+            log.debug(
+                "Union %d (%s) <-> %d (%s) via %s",
+                anilist_id,
+                entry.media.best_title(),
+                other,
+                rel.node.best_title(),
+                rel.relation_type,
+            )
             uf.union(anilist_id, other)
             if other not in visited:
                 queue.append(other)
