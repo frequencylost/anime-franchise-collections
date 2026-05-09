@@ -22,8 +22,30 @@ ANILIST_API_URL = "https://graphql.anilist.co"
 # franchise collections.
 DROP_RELATION_TYPES = {"ADAPTATION", "SOURCE", "CHARACTER"}
 
-# Cache TTL for relations + titles (24h is plenty — franchises rarely change).
-CACHE_TTL_SECONDS = 24 * 60 * 60
+# Default cache TTL for relations + titles. Override at runtime via the
+# ANILIST_CACHE_DAYS env var. Franchises rarely change, so a long TTL
+# (e.g. 30 days) is fine for personal use.
+DEFAULT_ANILIST_CACHE_DAYS = 1
+
+
+def _resolve_cache_ttl_seconds() -> int:
+    """Read ANILIST_CACHE_DAYS env var, fall back to default. Bad values
+    log a warning and revert to the default rather than crashing."""
+    raw = os.environ.get("ANILIST_CACHE_DAYS")
+    if raw is None or raw.strip() == "":
+        return DEFAULT_ANILIST_CACHE_DAYS * 24 * 60 * 60
+    try:
+        days = float(raw)
+        if days <= 0:
+            raise ValueError("must be > 0")
+        return int(days * 24 * 60 * 60)
+    except ValueError:
+        log.warning(
+            "Invalid ANILIST_CACHE_DAYS=%r — using default %d day(s)",
+            raw,
+            DEFAULT_ANILIST_CACHE_DAYS,
+        )
+        return DEFAULT_ANILIST_CACHE_DAYS * 24 * 60 * 60
 
 
 @dataclass
@@ -80,6 +102,12 @@ class AniListClient:
 
     def __init__(self, cache_dir: str):
         self._cache_path = os.path.join(cache_dir, "anilist_cache.json")
+        self._cache_ttl_seconds = _resolve_cache_ttl_seconds()
+        log.info(
+            "AniList cache TTL: %d days (%d seconds)",
+            self._cache_ttl_seconds // 86400,
+            self._cache_ttl_seconds,
+        )
         self._cache: dict[str, dict] = {}
         if os.path.exists(self._cache_path):
             try:
@@ -156,7 +184,9 @@ class AniListClient:
         """Fetch (or return cached) media + relations for an AniList ID."""
         key = str(anilist_id)
         cached = self._cache.get(key)
-        if cached and (time.time() - cached.get("at", 0) < CACHE_TTL_SECONDS):
+        if cached and (
+            time.time() - cached.get("at", 0) < self._cache_ttl_seconds
+        ):
             return _entry_from_cache(cached)
 
         data = self._post_with_retry(self._RELATIONS_QUERY, {"id": anilist_id})
