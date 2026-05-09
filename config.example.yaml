@@ -4,6 +4,7 @@
 # All entries here are optional — if you don't need to override anything,
 # you don't need a config file at all.
 
+# ----- Collection name overrides -----
 # Override the auto-generated collection name for specific franchises.
 # Match either by parent AniList ID (the lowest AniList ID in the cluster,
 # usually Season 1's ID) or by the auto-generated title text.
@@ -18,7 +19,32 @@ overrides:
   - match_title: "Is It Wrong to Try to Pick Up Girls in a Dungeon?"
     name: "Danmachi"
 
-# Tip: you can also rename the collection directly in Plex. The script
-# will detect the rename on its next run (state file in /config/cache
-# tracks what was last applied) and adopt the new name automatically —
-# no config entry needed.
+# ----- Cluster fixing -----
+# AniList's relation graph occasionally bridges unrelated franchises
+# through a single offending entry — usually a compilation, anthology,
+# or crossover special. To find the bridge, open the cluster report at
+# /config/logs/clusters_report.json after a run and look for an unexpected
+# title in the cluster's "members" list. Add that AniList ID below to
+# break the bridge on the next run.
+blocklist_anilist_ids:
+  # - 12345   # "Some Mecha Anthology" that bridges Eva and Gundam
+
+# Drop additional relation types beyond the always-dropped ones
+# (ADAPTATION, SOURCE, CHARACTER are always dropped).
+# Common useful additions for the cross-franchise leak problem:
+#   COMPILATION  - bundled collections / "movie 1+2+3" entries
+#   CONTAINS     - inverse of COMPILATION
+#   OTHER        - catch-all that's frequently noisy
+# These are kept by default because they're sometimes legitimately
+# franchise-internal; turn them off if you keep getting bridge problems.
+extra_dropped_relation_types:
+  # - COMPILATION
+  # - CONTAINS
+  # - OTHER
+
+# ----- Notes -----
+# Tip: you can also rename a collection directly in Plex. The script
+# tracks the last-applied name per cluster (in /config/cache/state.json)
+# and detects when most cluster items share a different collection name —
+# at which point it adopts the new name automatically. No config edits
+# needed for that workflow.
