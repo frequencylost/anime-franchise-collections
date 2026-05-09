@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -292,6 +293,24 @@ def run_once() -> int:
             continue
         items_by_anilist.setdefault(aid, []).append(item)
 
+    # Identify collections managed by another tool (default: agregarr,
+    # whose collections carry a label like "Agregarranilist18351").
+    # We never treat these as franchise-rename candidates because their
+    # names describe genres / lists, not franchises.
+    label_pattern_raw = os.environ.get("MANAGED_LABEL_PATTERN", "^Agregarr")
+    try:
+        label_pattern = re.compile(label_pattern_raw)
+    except re.error as e:
+        log.warning(
+            "Invalid MANAGED_LABEL_PATTERN=%r (%s) — using default '^Agregarr'",
+            label_pattern_raw,
+            e,
+        )
+        label_pattern = re.compile("^Agregarr")
+    excluded_collection_names = plex.list_managed_collection_names(
+        libraries, label_pattern
+    )
+
     applied = 0
     skipped_singletons = 0
     final_names: dict[int, str] = {}
@@ -310,6 +329,7 @@ def run_once() -> int:
             anilist=anilist,
             state=state,
             config=config,
+            excluded_collection_names=excluded_collection_names,
         )
         final_names[cluster.parent_id] = name
         log.info(
