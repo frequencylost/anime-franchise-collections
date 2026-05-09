@@ -109,6 +109,20 @@ docker run --rm \
 The logs will list every cluster, its size, and the chosen name. No
 Plex writes happen.
 
+## Logs and cluster report
+
+After every run, two files are written to `/config/logs/`:
+
+- `run-YYYYMMDD-HHMMSS.log` — full DEBUG-level log of the run, including
+  every relation union the script made. Older logs are rotated; the most
+  recent 10 are kept (override with `LOG_KEEP=N`).
+- `clusters_report.json` — the most useful file for auditing results.
+  Lists every cluster, the chosen collection name, every member's
+  AniList ID + title, and which Plex items are in the cluster. Open it
+  in any text editor or JSON viewer.
+
+Use the cluster report to spot unexpected groupings (see Troubleshooting).
+
 ## Caches
 
 - `/config/cache/plexanibridge.json` — PlexAniBridge mapping data,
@@ -118,6 +132,61 @@ Plex writes happen.
 - `/config/cache/state.json` — last-applied collection name per cluster.
 
 You can delete any of these to force a re-fetch on the next run.
+
+## Troubleshooting
+
+### Two unrelated franchises ended up in the same collection
+
+AniList's relation graph occasionally connects unrelated franchises
+through a single bridge entry — usually a compilation, anthology, or
+crossover special that lists both as relations.
+
+**To find the bridge:**
+
+1. Open `/config/logs/clusters_report.json`.
+2. Locate the over-large cluster (search for the unexpected collection
+   name, e.g. `"Neon Genesis Evangelion"`).
+3. Scan the cluster's `members` list for entries that don't belong —
+   compilation specials, anniversary OVAs, parody crossovers. Note the
+   `anilist_id` of the offender.
+4. Edit `config.yaml` and add the AniList ID to `blocklist_anilist_ids`:
+
+   ```yaml
+   blocklist_anilist_ids:
+     - 12345   # the bridge entry
+   ```
+
+5. Restart the container. The next run skips that entry entirely so it
+   can no longer bridge the two franchises.
+
+**Preventive option:** if you keep hitting this problem, drop the
+relation types that most often cause cross-franchise leaks. Edit
+`config.yaml`:
+
+```yaml
+extra_dropped_relation_types:
+  - COMPILATION
+  - CONTAINS
+  - OTHER
+```
+
+This is a global setting and is more aggressive than the blocklist.
+Use it if you'd rather break a few legitimate compilation links than
+keep playing whack-a-mole with bridge entries.
+
+### The script took hours to finish
+
+That's expected on the first run for a large library. AniList rate-
+limits at ~90 requests/min, so a library with 200 franchises with deep
+relation graphs can easily take 30–60 minutes the first time. Subsequent
+runs are fast — the AniList cache (`/config/cache/anilist_cache.json`)
+holds responses for 24h, and the PlexAniBridge mapping is cached for 12h.
+
+### I want to see what happened during a long run
+
+The full log is written to `/config/logs/run-*.log` whether or not the
+container is still running. Open the most recent file to see every
+union, every cluster decision, every Plex write.
 
 ## Notes
 
