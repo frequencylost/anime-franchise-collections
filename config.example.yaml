@@ -42,6 +42,24 @@ extra_dropped_relation_types:
   # - CONTAINS
   # - OTHER
 
+# ----- Per-Plex-item fixes -----
+# Sometimes the upstream PlexAniBridge mapping data has a wrong
+# AniList <-> TMDB/TVDB ID match. The symptom is a Plex item ending up
+# in a cluster it has nothing to do with. Look at the cluster report's
+# "plex_items" list — if you spot a title that doesn't belong, copy its
+# rating_key from the report and either skip it or remap it.
+
+# Skip specific Plex items entirely. Find rating_keys in clusters_report.json.
+plex_item_blocklist:
+  # - "84589"   # e.g. Bleach the Movie 3 (mapping bug placed it in Clannad)
+
+# Force a specific Plex item to a known AniList ID, overriding whatever
+# the PlexAniBridge mapping resolved it to. The AniList ID is the
+# numeric ID in the AniList URL (e.g. /anime/4147/ -> 4147).
+mapping_overrides:
+  # - rating_key: "84589"
+  #   anilist_id: 4147   # Bleach the Movie 3's actual AniList entry
+
 # ----- Notes -----
 # Tip: you can also rename a collection directly in Plex. The script
 # tracks the last-applied name per cluster (in /config/cache/state.json)
