@@ -186,6 +186,42 @@ relation graphs can easily take 30–60 minutes the first time. Subsequent
 runs are fast — the AniList cache (`/config/cache/anilist_cache.json`)
 holds responses for 24h, and the PlexAniBridge mapping is cached for 12h.
 
+### A specific Plex item ends up in a cluster it has nothing to do with
+
+This usually means the upstream PlexAniBridge mapping data has a wrong
+AniList ↔ TMDB/TVDB/IMDb ID match for that item. Symptoms in the
+cluster report: a `plex_items` entry whose title doesn't match anything
+in the cluster's `members` list — the title shown in `members` is what
+AniList says the AniList ID should be; the title shown in `plex_items`
+is what your Plex item actually is. If they disagree, you've hit a
+mapping bug.
+
+Two fixes via `config.yaml`:
+
+**(a) Skip the item entirely** if you don't care which collection it
+ends up in:
+
+```yaml
+plex_item_blocklist:
+  - "84589"   # rating_key from clusters_report.json
+```
+
+**(b) Force the correct AniList ID** so the item ends up in its real
+franchise:
+
+```yaml
+mapping_overrides:
+  - rating_key: "84589"
+    anilist_id: 4147   # found from the AniList URL of the right entry
+```
+
+Search AniList for the show, take the numeric ID from the URL
+(`/anime/4147/...` → `4147`), and put it here. The script then ignores
+PlexAniBridge for that one item.
+
+After the next run, `clusters_report.json` will show a `via_override: true`
+flag on items whose mapping you've forced, so you can confirm.
+
 ### Genre collections from another tool got picked up as renames
 
 If you also run agregarr (or another tool) that creates genre or theme
