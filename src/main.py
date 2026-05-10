@@ -122,6 +122,7 @@ def _write_cluster_report(
     anilist,
     final_names,
     blocklist,
+    mapping_overrides: dict[str, int] | None = None,
 ) -> None:
     """Dump a JSON report of every cluster, its members, and the final name.
 
@@ -141,8 +142,10 @@ def _write_cluster_report(
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "blocklist": sorted(blocklist or []),
+        "mapping_overrides": mapping_overrides or {},
         "clusters": [],
     }
+    overrides = mapping_overrides or {}
     for cluster in clusters:
         plex_items_in_cluster = []
         for aid in cluster.anilist_ids:
@@ -153,6 +156,7 @@ def _write_cluster_report(
                         "title": item.title,
                         "library": item.library_name,
                         "anilist_id": aid,
+                        "via_override": item.rating_key in overrides,
                     }
                 )
 
@@ -243,10 +247,41 @@ def run_once() -> int:
         str(x).upper()
         for x in (config.get("extra_dropped_relation_types") or [])
     }
+    plex_item_blocklist = {
+        str(x) for x in (config.get("plex_item_blocklist") or [])
+    }
+    # mapping_overrides: list of {rating_key, anilist_id} entries to force a
+    # specific Plex item -> AniList ID mapping (overriding PlexAniBridge).
+    mapping_overrides: dict[str, int] = {}
+    for entry in config.get("mapping_overrides") or []:
+        if not isinstance(entry, dict):
+            continue
+        rk = entry.get("rating_key")
+        aid = entry.get("anilist_id")
+        if rk is None or aid is None:
+            continue
+        try:
+            mapping_overrides[str(rk)] = int(aid)
+        except (TypeError, ValueError):
+            log.warning(
+                "Ignoring malformed mapping_override entry: %r", entry
+            )
     if blocklist:
-        log.info("Blocklist active: %s", sorted(blocklist))
+        log.info("AniList blocklist active: %s", sorted(blocklist))
     if extra_dropped:
         log.info("Dropping extra relation types: %s", sorted(extra_dropped))
+    if plex_item_blocklist:
+        log.info(
+            "Plex item blocklist active (%d items): %s",
+            len(plex_item_blocklist),
+            sorted(plex_item_blocklist),
+        )
+    if mapping_overrides:
+        log.info(
+            "Mapping overrides active (%d items): %s",
+            len(mapping_overrides),
+            mapping_overrides,
+        )
 
     # 1. Connect to Plex and inventory both libraries.
     plex = PlexClient(plex_url, plex_token)
@@ -258,14 +293,37 @@ def run_once() -> int:
     mappings.load()
 
     plex_to_anilist: dict[str, int] = {}
+    skipped_blocklisted = 0
+    overridden_count = 0
     for item in items:
+        if item.rating_key in plex_item_blocklist:
+            skipped_blocklisted += 1
+            log.debug(
+                "Skipping blocklisted Plex item rating_key=%s title=%r",
+                item.rating_key,
+                item.title,
+            )
+            continue
+        if item.rating_key in mapping_overrides:
+            forced_id = mapping_overrides[item.rating_key]
+            plex_to_anilist[item.rating_key] = forced_id
+            overridden_count += 1
+            log.debug(
+                "Mapping override: rating_key=%s title=%r -> anilist_id=%d",
+                item.rating_key,
+                item.title,
+                forced_id,
+            )
+            continue
         anilist_id = mappings.lookup_anilist_id_for(item)
         if anilist_id is not None:
             plex_to_anilist[item.rating_key] = anilist_id
     log.info(
-        "Mapped %d/%d Plex items to AniList IDs",
+        "Mapped %d/%d Plex items to AniList IDs (overrides=%d, blocklisted=%d)",
         len(plex_to_anilist),
         len(items),
+        overridden_count,
+        skipped_blocklisted,
     )
     if not plex_to_anilist:
         log.warning("No items could be mapped to AniList — nothing to do")
@@ -357,6 +415,7 @@ def run_once() -> int:
         anilist=anilist,
         final_names=final_names,
         blocklist=blocklist,
+        mapping_overrides=mapping_overrides,
     )
 
     log.info(
